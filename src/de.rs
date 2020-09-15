@@ -56,6 +56,7 @@ impl<'de> de::Deserializer<'de> for Deserializer<'de> {
     }
 }
 
+#[derive(Copy, Clone)]
 enum HeaderMap<'de> {
     CrateHttp(&'de http::header::HeaderMap),
 }
@@ -76,6 +77,12 @@ impl<'de> HeaderMap<'de> {
                     })
                 }
             },
+        }
+    }
+
+    fn contains(&self, key: &str) -> bool {
+        match self {
+            HeaderMap::CrateHttp(v) => v.contains_key(key),
         }
     }
 }
@@ -122,19 +129,74 @@ impl<'de> de::MapAccess<'de> for MapAccess<'de> {
                 self.index,
                 &ExpectedInSeq(self.fields.len()),
             )),
-            Some(v) => match self.map.get(v)? {
-                None => Err(Error::missing_field(v)),
-                Some(v) => {
-                    self.index += 1;
-                    seed.deserialize(ValueDeserializer { value: v })
-                }
-            },
+            Some(v) => {
+                self.index += 1;
+                seed.deserialize(MapDeserializer {
+                    map: self.map,
+                    field: v,
+                })
+            }
         }
     }
 }
 
-struct ValueDeserializer<'de> {
-    value: &'de str,
+struct MapDeserializer<'de> {
+    map: HeaderMap<'de>,
+    field: &'static str,
+}
+
+macro_rules! forward_to_value_deserializer {
+    ($($func:ident)*) => {$(
+        #[inline]
+        fn $func<V>(self, visitor: V) -> Result<V::Value>
+        where
+            V: Visitor<'de>,
+        {
+            match self.map.get(self.field)? {
+                None => Err(Error::missing_field(self.field)),
+                Some(v) => ValueDeserializer(v).$func(visitor)
+            }
+        })*
+    };
+}
+
+impl<'de> de::Deserializer<'de> for MapDeserializer<'de> {
+    type Error = Error;
+
+    fn deserialize_any<V>(self, visitor: V) -> Result<V::Value>
+        where
+            V: Visitor<'de>,
+    {
+        Err(Error::custom(format_args!(
+            "unsupported type: {}",
+            &visitor as &dyn Expected
+        )))
+    }
+
+    fn deserialize_option<V>(self, visitor: V) -> Result<V::Value>
+        where
+            V: Visitor<'de>,
+    {
+        match self.map.contains(self.field) {
+            false => visitor.visit_none(),
+            true => match self.map.get(self.field)? {
+                None => Err(Error::missing_field(self.field)),
+                Some(v) => visitor.visit_some(ValueDeserializer(v))
+            },
+        }
+    }
+
+    forward_to_value_deserializer! {
+        deserialize_i8 deserialize_i16 deserialize_i32 deserialize_i64 deserialize_i128
+        deserialize_u8 deserialize_u16 deserialize_u32 deserialize_u64 deserialize_u128
+        deserialize_f32 deserialize_f64 deserialize_char deserialize_str
+        deserialize_string deserialize_bytes deserialize_byte_buf
+    }
+
+    forward_to_deserialize_any! {
+        bool unit unit_struct newtype_struct seq tuple
+        tuple_struct map struct enum identifier ignored_any
+    }
 }
 
 macro_rules! parse_digit_helper {
@@ -143,9 +205,9 @@ macro_rules! parse_digit_helper {
         where
             V: Visitor<'de>,
         {
-            match self.value.parse::<$ty>() {
+            match self.0.parse::<$ty>() {
                 Err(_) => Err(Error::invalid_value(
-                    Unexpected::Str(self.value),
+                    Unexpected::Str(self.0),
                     &"digit only",
                 )),
                 Ok(v) => visitor.$parse(v),
@@ -153,6 +215,8 @@ macro_rules! parse_digit_helper {
         }
     };
 }
+
+struct ValueDeserializer<'de>(&'de str);
 
 impl<'de> de::Deserializer<'de> for ValueDeserializer<'de> {
     type Error = Error;
@@ -184,35 +248,35 @@ impl<'de> de::Deserializer<'de> for ValueDeserializer<'de> {
         where
             V: Visitor<'de>,
     {
-        if self.value.chars().count() != 1 {
-            return Err(Error::invalid_value(Unexpected::Str(self.value), &"a char"));
+        if self.0.chars().count() != 1 {
+            return Err(Error::invalid_value(Unexpected::Str(self.0), &"a char"));
         }
-        visitor.visit_char(self.value.chars().next().unwrap())
+        visitor.visit_char(self.0.chars().next().unwrap())
     }
 
     fn deserialize_str<V>(self, visitor: V) -> Result<V::Value>
         where
             V: Visitor<'de>,
     {
-        visitor.visit_str(self.value)
+        visitor.visit_str(self.0)
     }
     fn deserialize_string<V>(self, visitor: V) -> Result<V::Value>
         where
             V: Visitor<'de>,
     {
-        visitor.visit_string(self.value.to_string())
+        visitor.visit_string(self.0.to_string())
     }
     fn deserialize_bytes<V>(self, visitor: V) -> Result<V::Value>
         where
             V: Visitor<'de>,
     {
-        visitor.visit_bytes(self.value.as_bytes())
+        visitor.visit_bytes(self.0.as_bytes())
     }
     fn deserialize_byte_buf<V>(self, visitor: V) -> Result<V::Value>
         where
             V: Visitor<'de>,
     {
-        visitor.visit_byte_buf(self.value.as_bytes().to_vec())
+        visitor.visit_byte_buf(self.0.as_bytes().to_vec())
     }
 
     forward_to_deserialize_any! {
@@ -224,13 +288,14 @@ impl<'de> de::Deserializer<'de> for ValueDeserializer<'de> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde::Deserialize;
 
     #[test]
     fn test() {
         #[derive(Deserialize, Debug)]
         struct Test {
             content_length: i64,
-            content_type: String,
+            content_type: Option<String>,
         }
 
         let mut h = http::header::HeaderMap::new();
