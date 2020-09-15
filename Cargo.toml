@@ -5,6 +5,9 @@ authors = ["Xuanwo <github@xuanwo.io>"]
 edition = "2018"
 description = "Strongly typed HTTP Header library for Rust, built upon serde"
 license = "Apache-2.0"
+repository = "https://github.com/Xuanwo/serde_header"
+homepage = "https://github.com/Xuanwo/serde_header"
+documentation = "https://docs.rs/serde_header/"
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
