@@ -1,0 +1,19 @@
+[package]
+name = "serde_header"
+version = "0.1.0"
+authors = ["Xuanwo <github@xuanwo.io>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+thiserror = "1.0.20"
+http = "0.2.1"
+
+[dev-dependencies]
+criterion = "0.3"
+
+[[bench]]
+name = "benchmark"
+harness = false
