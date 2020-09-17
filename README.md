@@ -4,8 +4,18 @@ Strongly typed HTTP Header library for Rust, built upon serde
 
 ## Quick start
 
+### For http::header::HeaderMap
+
+Cargo.toml
+
+```toml
+serde_header = {version="0.2", features=["crate_http"]}
+```
+
+lib.rs
+
 ```rust
-use serde_header::from_http_header_map;
+use serde_header::from_header_map;
 
 #[derive(Deserialize, Debug)]
 struct Example {
@@ -17,7 +27,7 @@ struct Example {
 // h.insert("content_length", "100".parse().unwrap());
 // h.insert("content_type", "application/json".parse().unwrap());
 
-let t: Example = from_http_header_map(&h).unwrap();
+let t: Example = from_header_map(&h).unwrap();
 
 println!("{:?}", &t)
 ```
