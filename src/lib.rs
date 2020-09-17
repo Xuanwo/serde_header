@@ -1,14 +1,22 @@
 mod de;
 mod error;
 
+#[cfg(feature = "crate_http")]
+mod crate_http;
+
+#[cfg(feature = "crate_http")]
+use crate_http::{HeaderMap, HeaderMapOwned};
+
 pub use error::{Error, Result};
 
-pub fn from_http_header_map<'de, T>(h: &'de http::header::HeaderMap) -> Result<T>
-where
-    T: serde::de::Deserialize<'de>,
+#[cfg(feature = "crate_http")]
+pub fn from_header_map<'de, T>(h: &'de http::HeaderMap) -> Result<T>
+    where
+        T: serde::de::Deserialize<'de>,
 {
-    T::deserialize(de::Deserializer::from_http_header_map(h))
+    T::deserialize(de::Deserializer::from_header_map(h))
 }
+
 
 #[cfg(test)]
 mod tests {
@@ -27,7 +35,7 @@ mod tests {
         h.insert("content_length", "100".parse().unwrap());
         h.insert("content_length1", "1020".parse().unwrap());
 
-        let t: Test = from_http_header_map(&h).unwrap();
+        let t: Test = from_header_map(&h).unwrap();
 
         println!("{:?}", &t)
     }

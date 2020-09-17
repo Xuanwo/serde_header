@@ -1,21 +1,21 @@
 use std::fmt;
-use std::str::from_utf8;
 
 use serde::de;
 use serde::de::{DeserializeSeed, Expected, IntoDeserializer, Unexpected, Visitor};
 use serde::forward_to_deserialize_any;
 
-use super::{Error, Result};
+use super::{Error, Result, HeaderMap};
 use serde::de::Error as de_error;
 
 pub struct Deserializer<'de> {
-    inner: HeaderMap<'de>,
+    inner: super::HeaderMap<'de>,
 }
 
 impl<'de> Deserializer<'de> {
-    pub fn from_http_header_map(h: &'de http::header::HeaderMap) -> Self {
+    #[cfg(feature = "crate_http")]
+    pub fn from_header_map(h: &'de http::HeaderMap) -> Self {
         Deserializer {
-            inner: HeaderMap::CrateHttp(h),
+            inner: HeaderMap::new(h),
         }
     }
 }
@@ -50,42 +50,12 @@ impl<'de> de::Deserializer<'de> for Deserializer<'de> {
     }
 
     forward_to_deserialize_any! {
-        bool i8 i16 i32 i64 i128 u8 u16 u32 u64 u128 f32 f64 char str string
+        bool i8 i16 i32 i64 u8 u16 u32 u64 f32 f64 char str string
         bytes byte_buf option unit unit_struct newtype_struct seq tuple
         tuple_struct map enum identifier ignored_any
     }
 }
 
-#[derive(Copy, Clone)]
-enum HeaderMap<'de> {
-    CrateHttp(&'de http::header::HeaderMap),
-}
-
-impl<'de> HeaderMap<'de> {
-    fn get(&self, key: &str) -> Result<Option<&'de str>> {
-        match self {
-            HeaderMap::CrateHttp(v) => match v.get(key) {
-                None => Ok(None),
-                Some(v) => {
-                    let s = from_utf8(v.as_bytes());
-
-                    s.map(Some).map_err(|_| {
-                        de_error::invalid_value(
-                            Unexpected::Bytes(v.as_bytes()),
-                            &"valid utf-8 chars",
-                        )
-                    })
-                }
-            },
-        }
-    }
-
-    fn contains(&self, key: &str) -> bool {
-        match self {
-            HeaderMap::CrateHttp(v) => v.contains_key(key),
-        }
-    }
-}
 
 struct ExpectedInSeq(usize);
 
@@ -187,8 +157,8 @@ impl<'de> de::Deserializer<'de> for MapDeserializer<'de> {
     }
 
     forward_to_value_deserializer! {
-        deserialize_i8 deserialize_i16 deserialize_i32 deserialize_i64 deserialize_i128
-        deserialize_u8 deserialize_u16 deserialize_u32 deserialize_u64 deserialize_u128
+        deserialize_i8 deserialize_i16 deserialize_i32 deserialize_i64
+        deserialize_u8 deserialize_u16 deserialize_u32 deserialize_u64
         deserialize_f32 deserialize_f64 deserialize_char deserialize_str
         deserialize_string deserialize_bytes deserialize_byte_buf
     }
@@ -291,6 +261,7 @@ mod tests {
     use serde::Deserialize;
 
     #[test]
+    #[cfg(feature = "crate_http")]
     fn test() {
         #[derive(Deserialize, Debug)]
         struct Test {
@@ -303,7 +274,7 @@ mod tests {
         h.insert("content_type", "ABC".parse().unwrap());
 
         let d = Deserializer {
-            inner: HeaderMap::CrateHttp(&h),
+            inner: HeaderMap::new(&h),
         };
 
         let t: Test = serde::Deserialize::deserialize(d).unwrap();
