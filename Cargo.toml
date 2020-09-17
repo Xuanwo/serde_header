@@ -1,6 +1,6 @@
 [package]
 name = "serde_header"
-version = "0.1.1"
+version = "0.2.0"
 authors = ["Xuanwo <github@xuanwo.io>"]
 edition = "2018"
 description = "Strongly typed HTTP Header library for Rust, built upon serde"
